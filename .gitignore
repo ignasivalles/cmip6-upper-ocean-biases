@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+.DS_Store
+.ipynb_checkpoints/
+output/
+raw/
+data/*
+!data/README.md

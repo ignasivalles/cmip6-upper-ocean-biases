@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmip6-upper-ocean-biases"
+version = "1.0.0"
+description = "Analysis code for Vallès-Casanova et al., upper-ocean structure biases in CMIP6"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["common"]

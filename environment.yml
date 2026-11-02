@@ -1,0 +1,22 @@
+name: cmip6-biases
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy=2.2
+  - scipy=1.15
+  - pandas=2.2
+  - xarray=2025.1
+  - netcdf4=1.7
+  - dask=2025.1
+  - matplotlib=3.10
+  - cartopy=0.24
+  - cmocean=3.0
+  - gsw=3.6
+  # preprocessing only
+  - xesmf=0.8
+  - xgcm=0.8
+  - esgf-pyclient
+  - requests
+  - tqdm
+  - pip
