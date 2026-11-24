@@ -1,11 +1,12 @@
 """Figure S14: Figure 4 dominance analysis (Pacific and Indian hotspots combined)
-after leaving out (a) one model at a time and (b) one model family at a time."""
+after leaving out (a) one model at a time and (b) one model family at a time, and
+(c) with each model's mean SSS bias outside the Southern Ocean as a fourth predictor."""
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from common.data import SO_EXCLUDE, load_ensemble, samw_mask
+from common.data import SO_EXCLUDE, area_mean, load_ensemble, samw_mask
 from common.paths import FIG_DIR
 from common.stats import dominance
 from fig4_southern_ocean import COLORS, PREDICTORS, predictor_table
@@ -27,19 +28,39 @@ FAMILIES = {
 }
 SERIES = [("SST", COLORS["SST"], "o", "SST"), ("SSS", COLORS["SSS"], "o", "SSS"),
           ("JetLat", COLORS["JetLat"], "o", r"$\phi(\tau_x^{\max})$"),
+          ("SSS_remote", "#7F8C8D", "s", "Remote SSS"),
           ("total_r2", "black", "D", "Total $R^2$")]
+# regions used for the remote (model-wide) SSS bias in panel c
+REMOTE = [("North of 10°N", lambda lat: lat > 10),
+          ("20°S–20°N", lambda lat: abs(lat) < 20),
+          ("35–10°S", lambda lat: (lat > -35) & (lat < -10)),
+          ("North of 35°S", lambda lat: lat > -35)]
 
 
-def run(df, label):
-    w, total = dominance(df, "b3_both", PREDICTORS)
+def run(df, label, predictors=PREDICTORS):
+    w, total = dominance(df, "b3_both", predictors)
     return dict(label=label, n_models=len(df), total_r2=total * 100,
-                **{p: w[p] / total * 100 for p in PREDICTORS})
+                **{p: w[p] / total * 100 for p in predictors})
+
+
+def remote_sss(ds, df):
+    """Dominance with the mean SSS bias over each REMOTE region as fourth predictor."""
+    sss = ds["bias_sos"].mean("month")
+    rows = [run(df, "None (Fig. 4)")]
+    for label, region in REMOTE:
+        d = df.assign(SSS_remote=area_mean(sss, region(ds.lat)).to_pandas().reindex(df.index))
+        print(f"remote SSS {label}: r with SAMW SSS = {d.SSS.corr(d.SSS_remote):.2f}")
+        rows.append(run(d, label, PREDICTORS + ["SSS_remote"]))
+    return pd.DataFrame(rows)
 
 
 def panel(ax, res, full, title):
     y = np.arange(len(res))[::-1]
     for col, color, marker, _ in SERIES:
-        ax.axvline(full[col], color=color, lw=1.0, ls="--", alpha=0.6, zorder=1)
+        if col not in res:
+            continue
+        if full is not None:
+            ax.axvline(full[col], color=color, lw=1.0, ls="--", alpha=0.6, zorder=1)
         ax.scatter(res[col], y, s=22, color=color, marker=marker, edgecolor="white",
                    linewidth=0.4, zorder=3)
     for yy in y[::2]:
@@ -64,8 +85,10 @@ if __name__ == "__main__":
                          for fam, ms in FAMILIES.items()])
 
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    pd.concat([pd.DataFrame([full]), loo, lofo]).to_csv(FIG_DIR / "figS14_model_sensitivity.csv",
-                                                        index=False)
+    remote = remote_sss(ds, df)
+    pd.concat([pd.DataFrame([full]), loo, lofo, remote]).to_csv(
+        FIG_DIR / "figS14_model_sensitivity.csv", index=False)
+    print(remote.round(1).to_string(index=False))
     for name, res in [("one model", loo), ("one family", lofo)]:
         shift = (res[["total_r2"] + PREDICTORS] - pd.Series(full)[["total_r2"] + PREDICTORS]).abs()
         print(f"leave {name} out, max shift:", shift.max().round(1).to_dict())
@@ -75,7 +98,9 @@ if __name__ == "__main__":
                           hspace=0.35, left=0.17, right=0.98, top=0.95, bottom=0.07)
     panel(fig.add_subplot(gs[:, 0]), loo, full, rf"$\bf{{a)}}$  Leave one model out (n={len(df) - 1})")
     panel(fig.add_subplot(gs[0, 1]), lofo, full, r"$\bf{b)}$  Leave one family out")
-    ax_leg = fig.add_subplot(gs[1, 1])
+    sub = gs[1, 1].subgridspec(2, 1, height_ratios=[len(remote), 4], hspace=0.6)
+    panel(fig.add_subplot(sub[0]), remote, None, r"$\bf{c)}$  Remote SSS bias added")
+    ax_leg = fig.add_subplot(sub[1])
     ax_leg.axis("off")
     handles = [plt.Line2D([0], [0], marker=m, color="none", markerfacecolor=c, markeredgecolor="white",
                           markersize=7, label=lab) for _, c, m, lab in SERIES]

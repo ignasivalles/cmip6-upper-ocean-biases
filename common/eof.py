@@ -71,23 +71,31 @@ def corr_with_field(field, index):
                           vectorize=True, output_core_dims=[[], []])
 
 
-def partial_corr_with_field(field, index, control):
-    """Pointwise partial r(field, index | control) and two-sided p (df = n - 3)."""
+def partial_corr_with_field(field, index, control, min_models=10):
+    """Pointwise partial r(field, index | control) and two-sided p (df = n - 3).
+
+    All three correlations use the same models at each grid cell (those with
+    valid field, index and control); cells with fewer than min_models are NaN.
+    """
     field, index = xr.align(field, index, join="inner")
     control = control.sel(model=field.model)
 
-    ok = np.isfinite(index.values) & np.isfinite(control.values)
-    r_yz = stats.pearsonr(index.values[ok], control.values[ok])[0]
-    r_xz, _ = corr_with_field(field, control)
-    r_xy, _ = corr_with_field(field, index)
+    def _rp(x, y, z):
+        ok = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        n = ok.sum()
+        if n < min_models:
+            return np.nan, np.nan
+        c = np.corrcoef(np.vstack([x[ok], y[ok], z[ok]]))
+        denom = np.sqrt((1 - c[0, 2] ** 2) * (1 - c[1, 2] ** 2))
+        if not denom > 0:
+            return np.nan, np.nan
+        r = (c[0, 1] - c[0, 2] * c[1, 2]) / denom
+        t = r * np.sqrt((n - 3) / (1 - r**2))
+        return r, 2 * stats.t.sf(abs(t), n - 3)
 
-    denom = np.sqrt((1 - r_xz**2) * (1 - r_yz**2))
-    r = (r_xy - r_xz * r_yz) / denom.where(denom > 0)
-
-    dof = field.model.size - 3
-    t = r * np.sqrt(dof / (1 - r**2))
-    p = xr.apply_ufunc(lambda tv: 2 * stats.t.sf(np.abs(tv), dof), t, vectorize=True)
-    return r, p
+    return xr.apply_ufunc(_rp, field, index, control,
+                          input_core_dims=[["model"], ["model"], ["model"]],
+                          vectorize=True, output_core_dims=[[], []])
 
 
 def regress_on_index(field, index):
